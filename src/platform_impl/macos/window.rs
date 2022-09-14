@@ -319,7 +319,7 @@ lazy_static! {
       util::yes as extern "C" fn(&Object, Sel) -> BOOL,
     );
     decl.add_method(
-      sel!(canBecomeKeyWindow),
+      sel!(setBecomesKeyOnlyIfNeeded),
       util::yes as extern "C" fn(&Object, Sel) -> BOOL,
     );
     decl.add_method(
