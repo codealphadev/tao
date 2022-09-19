@@ -1,4 +1,5 @@
-// Copyright 2019-2021 Tauri Programme within The Commons Conservancy
+// Copyright 2014-2021 The winit contributors
+// Copyright 2021-2022 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
@@ -69,16 +70,17 @@ bitflags! {
 }
 bitflags! {
     pub struct WindowFlags: u32 {
-        const RESIZABLE      = 1 << 0;
-        const DECORATIONS    = 1 << 1;
-        const VISIBLE        = 1 << 2;
-        const ON_TASKBAR     = 1 << 3;
-        const ALWAYS_ON_TOP  = 1 << 4;
-        const NO_BACK_BUFFER = 1 << 5;
-        const TRANSPARENT    = 1 << 6;
-        const CHILD          = 1 << 7;
-        const MAXIMIZED      = 1 << 8;
-        const POPUP          = 1 << 14;
+        const RESIZABLE        = 1 << 0;
+        const DECORATIONS      = 1 << 1;
+        const VISIBLE          = 1 << 2;
+        const ON_TASKBAR       = 1 << 3;
+        const ALWAYS_ON_TOP    = 1 << 4;
+        const NO_BACK_BUFFER   = 1 << 5;
+        const TRANSPARENT      = 1 << 6;
+        const CHILD            = 1 << 7;
+        const MAXIMIZED        = 1 << 8;
+        const POPUP            = 1 << 14;
+        const ALWAYS_ON_BOTTOM = 1 << 16;
 
         /// Marker flag for fullscreen. Should always match `WindowState::fullscreen`, but is
         /// included here to make masking easier.
@@ -99,7 +101,6 @@ bitflags! {
         const IGNORE_CURSOR_EVENT = 1 << 15;
 
         const EXCLUSIVE_FULLSCREEN_OR_MASK = WindowFlags::ALWAYS_ON_TOP.bits;
-        const INVISIBLE_AND_MASK = !WindowFlags::MAXIMIZED.bits;
     }
 }
 
@@ -213,10 +214,6 @@ impl WindowFlags {
       self |= WindowFlags::EXCLUSIVE_FULLSCREEN_OR_MASK;
     }
 
-    if !self.contains(WindowFlags::VISIBLE) {
-      self &= WindowFlags::INVISIBLE_AND_MASK;
-    }
-
     self
   }
 
@@ -272,40 +269,42 @@ impl WindowFlags {
     self = self.mask();
     new = new.mask();
 
-    let mut diff = self ^ new;
-
-    // when hiding a maximized window, `self` contains `WindowFlags::MAXIMIZED`
-    // but `new` won't have it as it is removed in `new.mask()` call by applying `WindowFlags::INVISIBLE_AND_MASK`
-    // so `diff` will contain `WindowFlags::MAXIMIZED` and that will cause the window to unmaximize, but
-    // since we are trying to hide the window, we need to apply `WindowFlags::INVISIBLE_AND_MASK` on `diff` too.
-    if diff.contains(WindowFlags::MAXIMIZED)
-      && diff.contains(WindowFlags::VISIBLE)
-      && !new.contains(WindowFlags::VISIBLE)
-    {
-      diff &= WindowFlags::INVISIBLE_AND_MASK;
-    }
+    let diff = self ^ new;
 
     if diff == WindowFlags::empty() {
       return;
     }
 
-    if diff.contains(WindowFlags::VISIBLE) {
+    if new.contains(WindowFlags::VISIBLE) {
       unsafe {
-        ShowWindow(
-          window,
-          match new.contains(WindowFlags::VISIBLE) {
-            true => SW_SHOW,
-            false => SW_HIDE,
-          },
-        );
+        ShowWindow(window, SW_SHOW);
       }
     }
+
     if diff.contains(WindowFlags::ALWAYS_ON_TOP) {
       unsafe {
         SetWindowPos(
           window,
           match new.contains(WindowFlags::ALWAYS_ON_TOP) {
             true => HWND_TOPMOST,
+            false => HWND_NOTOPMOST,
+          },
+          0,
+          0,
+          0,
+          0,
+          SWP_ASYNCWINDOWPOS | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+        InvalidateRgn(window, HRGN::default(), false);
+      }
+    }
+
+    if diff.contains(WindowFlags::ALWAYS_ON_BOTTOM) {
+      unsafe {
+        SetWindowPos(
+          window,
+          match new.contains(WindowFlags::ALWAYS_ON_BOTTOM) {
+            true => HWND_BOTTOM,
             false => HWND_NOTOPMOST,
           },
           0,
@@ -340,6 +339,12 @@ impl WindowFlags {
             false => SW_RESTORE,
           },
         );
+      }
+    }
+
+    if !new.contains(WindowFlags::VISIBLE) {
+      unsafe {
+        ShowWindow(window, SW_HIDE);
       }
     }
 
